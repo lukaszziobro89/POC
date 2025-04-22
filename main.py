@@ -1,67 +1,42 @@
-from http import HTTPStatus
+# main.py
+import logging
+from fastapi import FastAPI
 
-from fastapi import FastAPI, Request
-from structlog import getLogger
-import uuid
-from starlette.middleware.base import BaseHTTPMiddleware
+# Import our custom logger
+from common.logging.middleware import setup_logging
+from common.logging.custom_logger import get_logger
 
-from common.logging.structured_logger import StructuredLogger
+# Import routers
+from app.routers import base, items
 
-app = FastAPI()
+# Configure logging before creating the app
+# Disable uvicorn access logs since we have our own audit logs
+logging.getLogger("uvicorn.access").disabled = True
 
-logger = StructuredLogger("PNC_LOGGER")
+# Create FastAPI app
+app = FastAPI(title="MyAPI")
 
+# Setup logging - this needs to happen BEFORE any logging occurs
+app = setup_logging(app)
 
-class AuditLoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # Generate a unique request ID
-        request_id = str(uuid.uuid4())
+# Get a logger for this module
+logger = get_logger("main")
 
-        # Log audit information before processing the request
-        logger.audit(
-            event="Incoming request",
-            path=request.url.path,
-            base_url=str(request.url),
-            client=request.headers.get("user-agent", "unknown"),
-            client_ip_address=request.client.host,
-            http_method=request.method,
-            status_code=HTTPStatus.NO_CONTENT,  # Status code will be logged after the response
-            request_id=request_id,
-        )
-
-        # Process the request
-        response = await call_next(request)
-
-        # Log audit information after processing the request
-        logger.audit(
-            event="Outgoing request",
-            path=request.url.path,
-            base_url=str(request.url),
-            client=request.headers.get("user-agent", "unknown"),
-            client_ip_address=request.client.host,
-            http_method=request.method,
-            status_code=response.status_code,
-            request_id=request_id,
-        )
-
-        return response
-
-# Add the middleware to the app
-app.add_middleware(AuditLoggingMiddleware) # type: ignore
+# Include routers
+app.include_router(base.router)
+app.include_router(items.router)
 
 
-@app.get("/")
-async def root():
-    # logger.info("ASDF")
-    return {"message": "Hello World"}
+if __name__ == "__main__":
+    import uvicorn
+    from uvicorn_log_config import LOGGING_CONFIG
 
-
-@app.get("/r2")
-async def root2():
-    # logger.info("r2")
-    return {"message": "r2"}
-
-
-@app.get("/hello/{name}")
-async def say_hello(name: str):
-    return {"message": f"Hello {name}"}
+    logger.info("P&C Application initialized successfully!")
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        proxy_headers=True,
+        forwarded_allow_ips='*',
+        log_config=LOGGING_CONFIG
+    )
