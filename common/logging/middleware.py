@@ -53,6 +53,17 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Get client type from User-Agent
         client = request.headers.get("User-Agent", "unknown")
 
+        # Logging request received
+        request.state.logger.audit(
+            "HTTP Request Received",
+            path=request.url.path,
+            base_url=str(request.base_url),
+            client=client,
+            client_ip_address=client_ip,
+            x_forwarded_for=request.headers.get("X-Forwarded-For"),
+            httpmethod=request.method
+        )
+
         # Process the request
         try:
             # Call the next middleware or route handler
@@ -71,7 +82,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             # Log request completion as audit log
             process_time = time.time() - start_time
             request.state.logger.audit(
-                "HTTP Request",
+                "HTTP Request Completed",
                 path=request.url.path,
                 base_url=str(request.base_url),
                 client=client,
