@@ -11,7 +11,7 @@ logger = get_logger("routers.items")
 # Create a router
 router = APIRouter(
     prefix="/items",
-    tags=["items"],
+    tags=["items","aa"],
 )
 
 @router.get("/", response_model=List[Item])

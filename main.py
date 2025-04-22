@@ -38,5 +38,6 @@ if __name__ == "__main__":
         port=8000,
         proxy_headers=True,
         forwarded_allow_ips='*',
-        log_config=LOGGING_CONFIG
+        log_config=LOGGING_CONFIG,
+        reload=True,
     )
