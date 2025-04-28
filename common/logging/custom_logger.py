@@ -1,380 +1,166 @@
-"""
-Structured logging configuration for the application.
+"""Structured JSON logging configuration for the entire application."""
 
-This module provides a custom logger implementation that combines domain and audit logging
-using structlog. It supports request ID binding, caller information tracking, and
-environment-based configuration.
-"""
-import contextvars
-import structlog
-import inspect
 import logging
-import sys
 import os
-from typing import Dict, Any, Optional
+import sys
+from enum import Enum
+from typing import Any, Dict
 
+import structlog
+
+# Configuration
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
-LOG_LEVEL_MAP = {
-    "DEBUG": logging.DEBUG,
-    "INFO": logging.INFO,
-    "WARNING": logging.WARNING,
-    "ERROR": logging.ERROR,
-    "CRITICAL": logging.CRITICAL,
-}
-NUMERIC_LOG_LEVEL = LOG_LEVEL_MAP.get(LOG_LEVEL, logging.INFO)
 
 
-# First, set up Python's standard logging module with a StreamHandler to output to stdout
-# We'll configure the root logger later after setting up the JSON formatter
+class LogType(Enum):
+    """Enum for log types."""
 
-import json
-import logging
-import requests
-from typing import Dict, Any
+    DOMAIN = "domain"
+    AUDIT = "audit"
 
-class DomainLogTypeFilter(logging.Filter):
-    def filter(self, record):
-        # Add your custom fields
-        record.domain = "domain"  # e.g., "api", "backend", etc.
-        record.log_type = "domain"  # e.g., "application", "audit", etc.
-        # Return True to include the record in the output
-        return True
-
-# common/logging/datadog_handler.py
-import json
-import logging
-import requests
-from typing import Dict, Any
-
-class DatadogHttpHandler(logging.Handler):
-    def __init__(self, api_key: str, site: str = "datadoghq.com"):
-        super().__init__()
-        self.api_key = api_key
-        self.url = f"https://http-intake.logs.{site}/api/v2/logs"
-        self.session = requests.Session()
-        self.headers = {
-            "Content-Type": "application/json",
-            "DD-API-KEY": api_key
-        }
-
-    def emit(self, record):
+    @classmethod
+    def _missing_(cls, value: str):
+        """Handle string values for log_type."""
         try:
-            log_entry = self.format(record)
-
-            # Convert string to dict if needed
-            if isinstance(log_entry, str):
-                try:
-                    log_data = json.loads(log_entry)
-                except json.JSONDecodeError:
-                    log_data = {"message": log_entry}
-            else:
-                log_data = log_entry
-
-            # Add Datadog metadata
-            log_data["ddsource"] = "python"
-            log_data["service"] = "PNC"
-            log_data["ddtags"] = "env:dev"
-
-            # Send to Datadog
-            response = self.session.post(
-                self.url,
-                headers=self.headers,
-                data=json.dumps([log_data]),
-                timeout=5
-            )
-
-            if response.status_code >= 400:
-                print(f"Datadog API error: Status {response.status_code}, Response: {response.text[:200]}")
-
-        except Exception as e:
-            import traceback
-            print(f"Failed to send logs to Datadog: {e}")
-            print(traceback.format_exc())
+            return cls(value.lower())
+        except ValueError:
+            return cls.DOMAIN
 
 
-
-DATADOG_API_KEY = "3a4c85a2b3ed8695598f93513ad38465"
-DATADOG_SITE = "datadoghq.eu"
-
-def rename_event_to_message(_logger, _method_name, event_dict):
-    """Rename the 'event' key to 'message' for compatibility with various log consumers.
-    Args:
-        _logger: The logger instance (unused)
-        _method_name: The logging method name (unused)
-        event_dict: The log event dictionary
-    Returns:
-        The modified event dictionary
+def setup_logging() -> None:
+    """Configure JSON-only logging for the entire application.
+    This ensures ALL logs (application, library, and uvicorn) are in JSON format.
     """
-    if "event" in event_dict:
-        event_dict["message"] = event_dict.pop("event")
-    return event_dict
+    # Remove all existing handlers from the root logger
+    root_logger = logging.getLogger()
+    root_logger.handlers = []
 
-
-# Configure structlog
-structlog.configure(
-    processors=[
-        rename_event_to_message,
+    # Configure the processors for structlog
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
-        # Add Datadog-specific metadata
-        lambda _, __, event_dict: {**event_dict, "ddsource": "python", "service": "PNC"},
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
-        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
-    ],
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    wrapper_class=structlog.stdlib.BoundLogger,
-    cache_logger_on_first_use=True,
-)
+        structlog.processors.UnicodeDecoder(),
+    ]
 
-# Set up the formatter for standard library integration
-formatter = structlog.stdlib.ProcessorFormatter(
-    processor=structlog.processors.JSONRenderer(),
-)
+    # Configure standard library logging
+    handler = logging.StreamHandler(sys.stdout)
 
-# In custom_logger.py, modify the logger setup:
+    # This creates a custom formatter that passes the event dict directly to JSONRenderer
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=structlog.processors.JSONRenderer(),
+        foreign_pre_chain=shared_processors,
+        keep_exc_info=False,
+        keep_stack_info=False,
+    )
 
-# Create both handlers
-stream_handler = logging.StreamHandler(sys.stdout)
-stream_handler.setFormatter(formatter)
-stream_handler.setLevel(NUMERIC_LOG_LEVEL)
+    handler.setFormatter(formatter)
+    root_logger.addHandler(handler)
+    root_logger.setLevel(LOG_LEVEL)
 
-# Add Datadog handler
-datadog_handler = DatadogHttpHandler(DATADOG_API_KEY, DATADOG_SITE)
-datadog_handler.setFormatter(formatter)
-datadog_handler.setLevel(NUMERIC_LOG_LEVEL)
-
-# Configure the root logger to use both handlers
-root_logger = logging.getLogger()
-root_logger.handlers = [stream_handler, datadog_handler]  # Add both handlers
-root_logger.setLevel(NUMERIC_LOG_LEVEL)
-
-# Configure app logger similarly
-app_logger = logging.getLogger("GenAI_P&C")
-app_logger.setLevel(NUMERIC_LOG_LEVEL)
-app_logger.handlers = [stream_handler, datadog_handler]  # Add both handlers
-app_logger.propagate = False
+    # Configure structlog to pass its output through standard library logging
+    structlog.configure(
+        processors=[*shared_processors, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
 
 
 class CustomLogger:
-    """Custom logger class that combines domain and audit logging. This class provides a unified interface
-    for both domain and audit logging, with support for request ID binding, caller information tracking, and
-    structured logging.
-    Attributes:
-        domain_logger: The structlog logger for domain logs
-        audit_logger: The structlog logger for audit logs
-        request_id: The current request ID, if any
-        _caller_info_cache: Cache for caller information to improve performance
+    """Custom logger that outputs JSON formatted logs.
+    All logs will be consistently formatted as JSON without any prefixes.
     """
 
-    def __init__(self, name: str):
-        """Initialize a new CustomLogger instance.
-        Args:
-            name: The logger name, typically the module name or path
-        """
-        # Normalize the name to ensure consistent naming
-        normalized_name = self._normalize_name(name)
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.logger = structlog.get_logger(name)
+        self._bound_values = {}
 
-        # Create both domain and audit loggers with our namespace
-        self.domain_logger = structlog.get_logger(f"app.{normalized_name}.domain")
-        self.audit_logger = structlog.get_logger(f"app.{normalized_name}.audit")
-        self.request_id = None
-        self._caller_info_cache = {}
-
-    @staticmethod
-    def _normalize_name(name: str) -> str:
-        """Normalize the logger name to ensure consistent naming.
-        Args:
-            name: The original logger name
-        Returns: The normalized logger name
-        """
-        # Remove 'app.' prefix if present to avoid duplication
-        if name.startswith("app."):
-            name = name[4:]
-
-        # Replace URL paths with normalized names
-        if name.startswith("/"):
-            # Convert URL paths to dot notation and remove leading/trailing slashes
-            name = name.strip("/").replace("/", ".")
-
-        return name
-
-    def bind_request_id(self, request_id: str) -> "CustomLogger":
-        """Bind a request ID to both loggers.
-        Args:
-            request_id: The request ID to bind
-        Returns: The logger instance for method chaining
-        """
-        self.request_id = request_id
-        self.domain_logger = self.domain_logger.bind(request_id=request_id)
-        self.audit_logger = self.audit_logger.bind(request_id=request_id)
+    def bind_request_id(self, request_id: str):
+        """Bind request_id to all subsequent log calls."""
+        self._bound_values["request_id"] = request_id
         return self
 
-    def _get_caller_info(self) -> Dict[str, Any]:
-        """Get the caller's module, function name, and line number. This looks up the call stack to find the actual
-        caller (skipping internal logger methods). Uses caching to improve performance for repeated calls
-        from the same location.
-        Returns: A dictionary containing module, func_name, and lineno
+    def _normalize_args(self, *args, **kwargs) -> Dict[str, Any]:
+        """Normalize different calling patterns to a single dict format
+        Handles all the various ways our logging methods might be called.
         """
-        try:
-            # Start with the immediate caller
-            frame = inspect.currentframe()
-            if not frame:
-                return self._default_caller_info()
+        # Start with default log type
+        result = {"log_type": "domain"}
 
-            # Move up to the method that called _log_domain
-            frame = frame.f_back  # Move to _log_domain
-            if not frame:
-                return self._default_caller_info()
+        # First, check if first arg is LogType
+        if args and isinstance(args[0], LogType):
+            result["log_type"] = args[0].value
+            args = args[1:]  # Remove LogType from args
 
-            # Move up to the actual logger method (info, debug, etc.)
-            frame = frame.f_back  # Move to debug/info/etc.
-            if not frame:
-                return self._default_caller_info()
+        # Handle explicit log_type in kwargs
+        elif "log_type" in kwargs:
+            log_type = kwargs.pop("log_type")
+            if isinstance(log_type, LogType):
+                result["log_type"] = log_type.value
+            else:
+                result["log_type"] = str(log_type).lower()
 
-            # Move up to the actual application code
-            frame = frame.f_back  # Move to the actual caller
-            if not frame:
-                return self._default_caller_info()
+        # Handle message from args or kwargs
+        if args:
+            result["event"] = str(args[0])
+            # Additional args
+            for i, arg in enumerate(args[1:], 1):
+                result[f"arg{i}"] = arg
+        elif "message" in kwargs:
+            result["event"] = kwargs.pop("message")
 
-            # Get a cache key based on the frame's code object and line number
-            # This allows us to cache caller info for repeated calls from the same location
-            cache_key = (id(frame.f_code), frame.f_lineno)
+        # Add the rest of kwargs
+        result.update(kwargs)
 
-            # Check if we have this information cached
-            if cache_key in self._caller_info_cache:
-                return self._caller_info_cache[cache_key]
+        # Add bound values if not overridden
+        for key, value in self._bound_values.items():
+            if key not in result:
+                result[key] = value
 
-            # Extract the information
-            module = inspect.getmodule(frame)
-            module_name = module.__name__ if module else "unknown"
-            func_name = frame.f_code.co_name
-            lineno = frame.f_lineno
+        # Add request_id from context if not already present
+        from common.logging.request_context import request_id_var
 
-            # Cache and return the result
-            result = {
-                "module": module_name,
-                "func_name": func_name,
-                "lineno": lineno
-            }
-            self._caller_info_cache[cache_key] = result
-            return result
+        request_id = request_id_var.get(None)
+        if request_id is not None and "request_id" not in result:
+            result["request_id"] = request_id
 
-        except Exception:
-            # If anything goes wrong, return default values
-            return self._default_caller_info()
-        finally:
-            # Ensure we clean up any frame references to avoid memory leaks
-            del frame
+        return result
 
-    @staticmethod
-    def _default_caller_info() -> Dict[str, Any]:
-        """Return default caller information when actual info cannot be determined.
-        Returns: A dictionary with default caller information
-        """
-        return {
-            "module": "unknown",
-            "func_name": "unknown",
-            "lineno": 0
-        }
+    def _log(self, level: str, *args, **kwargs):
+        """Internal method to handle all logging with consistent formatting."""
+        normalized = self._normalize_args(*args, **kwargs)
 
-    def _log_domain(self, level: str, message: str, **kwargs) -> None:
-        """Log a domain message with caller information.
-        Args:
-            level: The log level (debug, info, warning, error, critical)
-            message: The log message
-            **kwargs: Additional key-value pairs to include in the log
-        """
-        caller_info = self._get_caller_info()
-        log_method = getattr(self.domain_logger, level)
-        log_method(
-            message,
-            log_type="domain",
-            **caller_info,
-            **kwargs
-        )
+        # Extract event message if present, otherwise use an empty string
+        event = normalized.pop("event", "")
 
-    def debug(self, message: str, **kwargs) -> None:
-        """Log a debug message.
-        Args:
-            message: The log message
-            **kwargs: Additional key-value pairs to include in the log
-        """
-        self._log_domain("debug", message, **kwargs)
+        # Log with structlog
+        return getattr(self.logger, level)(event, **normalized)
 
-    def info(self, message: str, **kwargs) -> None:
-        """Log an info message.
-        Args:
-            message: The log message
-            **kwargs: Additional key-value pairs to include in the log
-        """
-        self._log_domain("info", message, **kwargs)
+    def debug(self, *args, **kwargs):
+        return self._log("debug", *args, **kwargs)
 
-    def warning(self, message: str, **kwargs) -> None:
-        """Log a warning message.
-        Args:
-            message: The log message
-            **kwargs: Additional key-value pairs to include in the log
-        """
-        self._log_domain("warning", message, **kwargs)
+    def info(self, *args, **kwargs):
+        return self._log("info", *args, **kwargs)
 
-    def error(self, message: str, **kwargs) -> None:
-        """Log an error message.
-        Args:
-            message: The log message
-            **kwargs: Additional key-value pairs to include in the log
-        """
-        self._log_domain("error", message, **kwargs)
+    def warning(self, *args, **kwargs):
+        return self._log("warning", *args, **kwargs)
 
-    def critical(self, message: str, **kwargs) -> None:
-        """Log a critical message.
-        Args:
-            message: The log message
-            **kwargs: Additional key-value pairs to include in the log
-        """
-        self._log_domain("critical", message, **kwargs)
+    def error(self, *args, **kwargs):
+        return self._log("error", *args, **kwargs)
 
-    def audit(self, message: str, **kwargs) -> None:
-        """Log an audit message.
-        Args:
-            message: The log message
-            **kwargs: Additional key-value pairs to include in the log
-        """
-        self.audit_logger.info(
-            message,
-            log_type="audit",
-            **kwargs
-        )
+    def critical(self, *args, **kwargs):
+        return self._log("critical", *args, **kwargs)
+
+    # def audit(self, event: str, **kwargs):
+    #     """Convenience method for audit logs"""
+    #     return self.info(event, log_type=LogType.AUDIT, **kwargs)
 
 
-# Add at the top of custom_logger.py
-import contextvars
-
-
-def get_logger(name: str, request_id: Optional[str] = None) -> CustomLogger:
-    """Get a custom logger instance.
-    Args:
-        name: The logger name
-        request_id: Optional request ID to automatically bind
-    Returns:
-        A configured CustomLogger instance
-    """
-    logger = CustomLogger(name)
-
-    # Use provided request_id if available
-    if request_id:
-        logger = logger.bind_request_id(request_id)
-    else:
-        # Try to get request_id from context variable
-        try:
-            # Import inside function to avoid circular import
-            from common.logging.middleware import request_id_var
-            ctx_request_id = request_id_var.get()
-            if ctx_request_id:
-                logger = logger.bind_request_id(ctx_request_id)
-        except (LookupError, ImportError):
-            # No request ID in context or import issue
-            pass
-
-    return logger
+def get_logger(name: str = "app") -> CustomLogger:
+    """Get a custom logger instance that produces JSON-only logs."""
+    return CustomLogger(name)
