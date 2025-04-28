@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 
-from common.logging.custom_logger import get_logger
+from common.logging.custom_logger import get_logger, DatadogHttpHandler
 
 # Define request_id_var at module level for global access
 request_id_var = contextvars.ContextVar("request_id", default=None)
@@ -114,16 +114,70 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         return client_ip
 
 
+# def setup_logging(app: FastAPI) -> FastAPI:
+#     """Set up logging for a FastAPI application.
+#     This function adds the RequestLoggingMiddleware to the application.
+#     Args:
+#         app: The FastAPI application
+#     Returns:
+#         The configured FastAPI application
+#     """
+#     # Add request logging middleware
+#     app.add_middleware(RequestLoggingMiddleware)
+#
+#     # Return the configured app
+#     return app
+# In setup_logging() function (common/logging/middleware.py)
+import structlog
+from logging import StreamHandler, FileHandler
+# from common.logging.datadog_handler import DatadogHttpHandler
+
+DATADOG_API_KEY = "3a4c85a2b3ed8695598f93513ad38465"
+DATADOG_SITE = "datadoghq.eu"
+import logging
+
 def setup_logging(app: FastAPI) -> FastAPI:
     """Set up logging for a FastAPI application.
-    This function adds the RequestLoggingMiddleware to the application.
+    This function adds the RequestLoggingMiddleware to the application and configures logging handlers.
     Args:
         app: The FastAPI application
     Returns:
         The configured FastAPI application
     """
+    # Create handlers
+    stream_handler = StreamHandler()
+    datadog_handler = DatadogHttpHandler(DATADOG_API_KEY, DATADOG_SITE)
+
+    # Configure standard library logging first
+    logging.basicConfig(
+        format="%(message)s",
+        level=logging.INFO,
+        handlers=[stream_handler, datadog_handler]
+    )
+
+    # Configure structlog
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            structlog.processors.TimeStamper(fmt="iso", utc=True),
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+
+    # Set formatting for all handlers
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=structlog.processors.JSONRenderer(),
+    )
+
+    # Apply formatter to all handlers
+    stream_handler.setFormatter(formatter)
+    datadog_handler.setFormatter(formatter)
+
     # Add request logging middleware
     app.add_middleware(RequestLoggingMiddleware)
 
-    # Return the configured app
     return app

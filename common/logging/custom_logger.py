@@ -27,6 +27,75 @@ NUMERIC_LOG_LEVEL = LOG_LEVEL_MAP.get(LOG_LEVEL, logging.INFO)
 # First, set up Python's standard logging module with a StreamHandler to output to stdout
 # We'll configure the root logger later after setting up the JSON formatter
 
+import json
+import logging
+import requests
+from typing import Dict, Any
+
+class DomainLogTypeFilter(logging.Filter):
+    def filter(self, record):
+        # Add your custom fields
+        record.domain = "domain"  # e.g., "api", "backend", etc.
+        record.log_type = "domain"  # e.g., "application", "audit", etc.
+        # Return True to include the record in the output
+        return True
+
+# common/logging/datadog_handler.py
+import json
+import logging
+import requests
+from typing import Dict, Any
+
+class DatadogHttpHandler(logging.Handler):
+    def __init__(self, api_key: str, site: str = "datadoghq.com"):
+        super().__init__()
+        self.api_key = api_key
+        self.url = f"https://http-intake.logs.{site}/api/v2/logs"
+        self.session = requests.Session()
+        self.headers = {
+            "Content-Type": "application/json",
+            "DD-API-KEY": api_key
+        }
+
+    def emit(self, record):
+        try:
+            log_entry = self.format(record)
+
+            # Convert string to dict if needed
+            if isinstance(log_entry, str):
+                try:
+                    log_data = json.loads(log_entry)
+                except json.JSONDecodeError:
+                    log_data = {"message": log_entry}
+            else:
+                log_data = log_entry
+
+            # Add Datadog metadata
+            log_data["ddsource"] = "python"
+            log_data["service"] = "PNC"
+            log_data["ddtags"] = "env:dev"
+
+            # Send to Datadog
+            response = self.session.post(
+                self.url,
+                headers=self.headers,
+                data=json.dumps([log_data]),
+                timeout=5
+            )
+
+            if response.status_code >= 400:
+                print(f"Datadog API error: Status {response.status_code}, Response: {response.text[:200]}")
+
+        except Exception as e:
+            import traceback
+            print(f"Failed to send logs to Datadog: {e}")
+            print(traceback.format_exc())
+
+
+
+DATADOG_API_KEY = "3a4c85a2b3ed8695598f93513ad38465"
+DATADOG_SITE = "datadoghq.eu"
+
 def rename_event_to_message(_logger, _method_name, event_dict):
     """Rename the 'event' key to 'message' for compatibility with various log consumers.
     Args:
@@ -47,6 +116,8 @@ structlog.configure(
         rename_event_to_message,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
+        # Add Datadog-specific metadata
+        lambda _, __, event_dict: {**event_dict, "ddsource": "python", "service": "PNC"},
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
@@ -62,25 +133,28 @@ formatter = structlog.stdlib.ProcessorFormatter(
     processor=structlog.processors.JSONRenderer(),
 )
 
-# Create a single handler for our custom logs
-handler = logging.StreamHandler(sys.stdout)
-handler.setFormatter(formatter)
-handler.setLevel(NUMERIC_LOG_LEVEL)
+# In custom_logger.py, modify the logger setup:
 
-# Configure the root logger to use JSON formatting
+# Create both handlers
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setFormatter(formatter)
+stream_handler.setLevel(NUMERIC_LOG_LEVEL)
+
+# Add Datadog handler
+datadog_handler = DatadogHttpHandler(DATADOG_API_KEY, DATADOG_SITE)
+datadog_handler.setFormatter(formatter)
+datadog_handler.setLevel(NUMERIC_LOG_LEVEL)
+
+# Configure the root logger to use both handlers
 root_logger = logging.getLogger()
-root_logger.handlers = [handler]  # Replace any existing handlers
+root_logger.handlers = [stream_handler, datadog_handler]  # Add both handlers
 root_logger.setLevel(NUMERIC_LOG_LEVEL)
 
-# Create a logger specifically for our application
+# Configure app logger similarly
 app_logger = logging.getLogger("GenAI_P&C")
 app_logger.setLevel(NUMERIC_LOG_LEVEL)
-app_logger.handlers = [handler]  # Replace any existing handlers
-app_logger.propagate = False  # Don't propagate to root logger
-
-# Disable Uvicorn's access logs
-logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-logging.getLogger("uvicorn.access").propagate = False
+app_logger.handlers = [stream_handler, datadog_handler]  # Add both handlers
+app_logger.propagate = False
 
 
 class CustomLogger:
