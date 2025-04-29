@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app.dependencies import (
     get_request_logger,
     process_request_logging,
-    process_request_with_id_from_path,
 )
 from app.service.classification.classify import perform_classification
 from app.service.ocr import azure_ai_vision
@@ -62,6 +61,7 @@ async def create_request(
 
 @router.get("/ocr")
 async def ocr(request: Request, logger=Depends(get_request_logger)):
+
     # For endpoints without request ID in path and not excluded
     RequestContext.setup_request_context(request)
     RequestContext.on_request_start(request)
@@ -77,16 +77,11 @@ async def ocr(request: Request, logger=Depends(get_request_logger)):
         response_status = 500
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
-        RequestContext.on_request_end(request, response_status)
+        RequestContext.on_request_end(request, 500)
 
 
 @router.get("/classify/{requestId}", dependencies=[Depends(process_request_logging)])
-async def classify(
-    requestId: str,
-    request: Request,
-    _: None = Depends(process_request_with_id_from_path),
-    logger=Depends(get_request_logger),
-):
+async def classify(requestId: str, request: Request, logger=Depends(get_request_logger)):
     try:
         logger.info(f"preparing CLASSIFICATION for request ID: {requestId}")
         perform_classification()
@@ -101,18 +96,15 @@ async def classify(
         response_status = 500
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
-        RequestContext.on_request_end(request, response_status)
+        RequestContext.on_request_end(request, 500)
 
 
 @router.get("/token")
 async def token(request: Request):
-    # No request logging for token endpoint
-    logger = get_logger("token")
     logger.info("Token endpoint accessed")
     return {"token": "sample-token"}
 
 
 @router.get("/healthcheck")
 async def healthcheck():
-    # No request logging for healthcheck endpoint
     return {"status": "healthy"}
