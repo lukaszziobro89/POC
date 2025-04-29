@@ -1,3 +1,7 @@
+import os
+
+LOG_LEVEL = "INFO"
+
 MIN_OCR_TIME = 3
 MAX_OCR_TIME = 15
 

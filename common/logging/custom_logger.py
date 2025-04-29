@@ -1,5 +1,3 @@
-"""Structured JSON logging configuration for the entire application."""
-
 import logging
 import os
 import sys
@@ -57,6 +55,7 @@ def setup_logging() -> None:
         keep_stack_info=False,
     )
 
+    # Setting formatter, handler and log level
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
     root_logger.setLevel(LOG_LEVEL)
@@ -65,15 +64,13 @@ def setup_logging() -> None:
     structlog.configure(
         processors=[*shared_processors, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
         logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
+        wrapper_class=structlog.stdlib.BoundLogger, # type: ignore
         cache_logger_on_first_use=True,
     )
 
 
 class CustomLogger:
-    """Custom logger that outputs JSON formatted logs.
-    All logs will be consistently formatted as JSON without any prefixes.
-    """
+    """Custom logger that outputs JSON formatted logs. All logs will be consistently formatted as JSON."""
 
     def __init__(self, name: str) -> None:
         self.name = name
@@ -86,9 +83,9 @@ class CustomLogger:
         return self
 
     def _normalize_args(self, *args, **kwargs) -> Dict[str, Any]:
-        """Normalize different calling patterns to a single dict format
-        Handles all the various ways our logging methods might be called.
-        """
+        """Normalize different calling patterns to a single dict format.
+        Handles all the various ways our logging methods might be called."""
+
         # Start with default log type
         result = {"log_type": "domain"}
 
@@ -155,10 +152,6 @@ class CustomLogger:
 
     def critical(self, *args, **kwargs):
         return self._log("critical", *args, **kwargs)
-
-    # def audit(self, event: str, **kwargs):
-    #     """Convenience method for audit logs"""
-    #     return self.info(event, log_type=LogType.AUDIT, **kwargs)
 
 
 def get_logger(name: str = "app") -> CustomLogger:

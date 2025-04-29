@@ -5,6 +5,7 @@ from app.dependencies import (
     process_request_logging,
     process_request_with_id_from_path,
 )
+from app.service.classification.classify import perform_classification
 from app.service.ocr import azure_ai_vision
 from common.logging.custom_logger import get_logger
 from common.logging.request_context import RequestContext
@@ -79,7 +80,7 @@ async def ocr(request: Request, logger=Depends(get_request_logger)):
         RequestContext.on_request_end(request, response_status)
 
 
-@router.get("/classify/{requestId}")
+@router.get("/classify/{requestId}", dependencies=[Depends(process_request_logging)])
 async def classify(
     requestId: str,
     request: Request,
@@ -88,7 +89,7 @@ async def classify(
 ):
     try:
         logger.info(f"preparing CLASSIFICATION for request ID: {requestId}")
-        azure_ai_vision.perform_classification()
+        perform_classification()
         logger.info(f"CLASSIFICATION DONE for request ID: {requestId}!")
         response_status = 200
         return {
