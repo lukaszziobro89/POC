@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request, Response
 from starlette.responses import JSONResponse
 
 from app.routers import base
-from common.exception.pnc_exception import PncException
 from common.logging.custom_logger import get_logger, setup_logging
 import uvicorn
 from uvicorn_log_config import LOGGING_CONFIG
