@@ -11,7 +11,6 @@ from common.logging.request_context import RequestContext
 
 router = APIRouter(tags=["base"])
 
-# Default logger for module-level logs
 logger = get_logger(__name__)
 
 

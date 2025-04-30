@@ -6,9 +6,7 @@ from typing import Any, Dict
 
 import structlog
 
-# Configuration
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
-
 
 class LogType(Enum):
     """Enum for log types."""

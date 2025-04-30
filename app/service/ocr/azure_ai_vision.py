@@ -2,8 +2,8 @@ import random
 from time import sleep
 
 from common.logging.custom_logger import LogType, get_logger
-
 from config import MIN_OCR_TIME, MAX_OCR_TIME
+
 
 def perform_ocr() -> None:
     logger = get_logger(__name__)
