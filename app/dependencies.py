@@ -1,12 +1,9 @@
 from fastapi import Request
-
 from common.logging.custom_logger import get_logger
 from common.logging.request_context import RequestContext
 
 
-def process_request_logging(request: Request) -> None:
-    """Set up request context and logging for all regular endpoints."""
-
+async def get_logger_with_context(request: Request):
     # Set up the context variables
     RequestContext.setup_request_context(request)
     RequestContext.on_request_start(request)
@@ -15,10 +12,7 @@ def process_request_logging(request: Request) -> None:
     from common.logging.request_context import request_id_var
     request_id_var.set(request.state.request_id)
 
-
-def get_request_logger(request: Request):
-    """Get a logger with request_id bound to it."""
-    # Default module name if we can't determine it from a request
+    # Default module name
     module_name = __name__
 
     # Try to extract module name from request endpoint
@@ -28,10 +22,8 @@ def get_request_logger(request: Request):
         if hasattr(endpoint, "__module__"):
             module_name = endpoint.__module__
 
-    # Get logger with an appropriate module name
+    # Get and return the logger
     logger = get_logger(module_name)
-
-    # Explicitly bind the request_id from request.state if available
     if hasattr(request.state, "request_id"):
         logger = logger.bind_request_id(request.state.request_id)
 
