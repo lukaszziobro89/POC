@@ -7,6 +7,8 @@ from config import MIN_OCR_TIME, MAX_OCR_TIME
 
 def perform_ocr() -> None:
     logger = get_logger(__name__)
+    logger.error(">>> LOGGER ERROR<<<")
+    # raise AttributeError("This is a test error")
     logger.info(log_type=LogType.AUDIT, message=">>> ATTEMPTING TO PERFORM OCR <<<")
     logger.info("Performing OCR...")
     random_ocr_time = random.randint(MIN_OCR_TIME, MAX_OCR_TIME)

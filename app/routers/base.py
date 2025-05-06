@@ -26,6 +26,8 @@ async def create_request(request: Request, logger=Depends(get_logger_with_contex
         logger.info("Creating new request")
         request_id = request.state.request_id
         logger.info(f"Request created with ID: {request_id}")
+        logger.error(f"Request creation failed!")
+        raise HTTPException(status_code=500, detail="Some exception occurred.")
         return {"request_id": request_id, "status": "created"}
     except Exception as e:
         RequestContext.on_request_error(request, e)
@@ -47,18 +49,17 @@ async def create_request(request: Request, logger=Depends(get_logger_with_contex
         RequestContext.on_request_end(request, 200)
 
 @router.get("/ocr")
-async def ocr(request: Request, logger=Depends(get_logger_with_context)):
+async def ocr_endpoint(request: Request, logger=Depends(get_logger_with_context)):
 
     try:
         logger.info("preparing OCR")
         azure_ai_vision.perform_ocr()
         logger.info("OCR DONE!")
-        response_status = 200
         return {"status": "success", "message": "OCR completed"}
     except Exception as e:
         RequestContext.on_request_error(request, e)
         response_status = 500
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=response_status, detail="Internal server error")
     finally:
         RequestContext.on_request_end(request, 500)
 

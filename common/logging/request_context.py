@@ -1,6 +1,7 @@
 import contextvars
 import time
 import uuid
+import inspect
 from typing import Optional
 
 from fastapi import Request
@@ -52,12 +53,6 @@ class RequestContext:
         """
         path = request.url.path
 
-        # Use the calling module's name instead of a path for logger
-        import inspect
-
-        caller_frame = inspect.currentframe().f_back
-        module_name = caller_frame.f_globals["__name__"]
-
         # Skip request ID handling for specific endpoints
         if path in RequestContext.NON_REQUEST_ID_ENDPOINTS:
             # Only set up logger without request ID
@@ -68,7 +63,7 @@ class RequestContext:
 
         # Use provided request ID if available
         if request_id is None:
-            if path == RequestContext.REQUEST_ID_ENDPOINTS:
+            if path in RequestContext.REQUEST_ID_ENDPOINTS:
                 # Generate new request ID for /request endpoint
                 request_id = RequestContext.generate_request_id()
             else:
@@ -84,10 +79,33 @@ class RequestContext:
         request_id_var.set(request_id)
         request.state.request_id = request_id
 
-        # Create and bind logger
-        logger = get_logger(module_name)
-        request.state.logger = logger.bind_request_id(request_id)
+        # Try to extract module and function name from request endpoint
+        module_name = None
+        function_name = None
 
+        if (hasattr(request, "scope") and "route" in request.scope and
+                hasattr(request.scope["route"], "endpoint")):
+            endpoint = request.scope["route"].endpoint
+            if hasattr(endpoint, "__module__"):
+                module_name = endpoint.__module__
+            if hasattr(endpoint, "__name__"):
+                function_name = endpoint.__name__
+
+        # If we couldn't get module_name from endpoint, try to get it from caller
+        if not module_name:
+            frame = inspect.currentframe()
+            if frame and frame.f_back:
+                module_name = frame.f_back.f_globals["__name__"]
+
+        # Create the logger name that includes both module and function if available
+        logger_name = module_name or "app"
+        if function_name:
+            logger_name = f"{logger_name}.{function_name}"
+
+        # Create and bind logger
+        logger = get_logger(logger_name)
+        request.state.logger = logger.bind_request_id(request_id)
+        request.state.start_time = time.time()
 
     @staticmethod
     def on_request_start(request: Request) -> None:
@@ -102,9 +120,26 @@ class RequestContext:
     @staticmethod
     def on_request_error(request: Request, error: Exception) -> None:
         """Log request error details."""
-        request.state.logger.error(
+        # Extract the exception location information
+        tb = error.__traceback__
+        while tb.tb_next:
+            tb = tb.tb_next
+
+        frame = tb.tb_frame
+        code = frame.f_code
+
+        # Get the correct module and function name from the exception
+        module_name = frame.f_globals.get("__name__", "unknown")
+        function_name = code.co_name
+
+        # Create a properly formatted logger name
+        logger_name = f"{module_name}.{function_name}"
+
+        # Use the module-specific logger
+        logger = get_logger(logger_name).bind_request_id(request.state.request_id)
+
+        logger.error(
             "Request processing failed",
-            request_id=request.state.request_id,
             error=str(error),
             exception_type=type(error).__name__,
         )
