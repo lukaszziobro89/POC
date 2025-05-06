@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app.dependencies import get_logger_with_context
 from app.service.classification.classify import perform_classification
 from app.service.ocr import azure_ai_vision
+from common.exceptions.pnc_exceptions import PncException
 from common.logging.request_context import RequestContext
 
 router = APIRouter(tags=["base"])
@@ -27,11 +28,14 @@ async def create_request(request: Request, logger=Depends(get_logger_with_contex
         request_id = request.state.request_id
         logger.info(f"Request created with ID: {request_id}")
         logger.error(f"Request creation failed!")
-        raise HTTPException(status_code=500, detail="Some exception occurred.")
-        return {"request_id": request_id, "status": "created"}
-    except Exception as e:
+        raise PncException(status_code=500, message='Some exception occurred')
+    except PncException as e:
         RequestContext.on_request_error(request, e)
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise
+    except Exception as e:
+        # Other exceptions still become generic HTTPExceptions
+        RequestContext.on_request_error(request, e)
+        raise HTTPException(status_code=500, detail="Internal server error !")
     finally:
         RequestContext.on_request_end(request, 200)
 
