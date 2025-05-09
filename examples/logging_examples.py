@@ -7,7 +7,9 @@ import sys
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from typing import Optional
+from pathlib import Path
 
+sys.path.append(str(Path(__file__).parent.parent))
 from common.logging.custom_logger import get_logger, setup_logging, LogType
 
 setup_logging()
