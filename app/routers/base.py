@@ -28,14 +28,15 @@ async def create_request(request: Request, logger=Depends(get_logger_with_contex
         request_id = request.state.request_id
         logger.info(f"Request created with ID: {request_id}")
         logger.error(f"Request creation failed!")
-        raise PncException(status_code=500, message='Some exception occurred')
+        raise ValueError('Some exception occurred')
+        # raise PncException(status_code=500, message='Some exception occurred')
     except PncException as e:
         RequestContext.on_request_error(request, e)
         raise
     except Exception as e:
         # Other exceptions still become generic HTTPExceptions
         RequestContext.on_request_error(request, e)
-        raise HTTPException(status_code=500, detail="Internal server error !")
+        raise HTTPException(status_code=500, detail="Here i got internal server error !")
     finally:
         RequestContext.on_request_end(request, 200)
 
