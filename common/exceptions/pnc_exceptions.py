@@ -40,36 +40,28 @@ class VolumeException(PncException):
 def setup_exception_handlers(app: FastAPI):
     """Set up global exception handlers for the application."""
 
-    @app.exception_handler(PncException)
-    async def pnc_exception_handler(request: Request, exc: PncException):
-        # Use request-bound logger if available
+    def log_exception(request: Request, exc: Exception, status_code: int):
+        """Helper function to log exceptions."""
         req_logger = getattr(request.state, "logger", logger)
-
         req_logger.error(
             "Request failed",
-            error=exc.message,
-            status_code=exc.status_code,
+            error=getattr(exc, "message", str(exc)),
+            status_code=status_code,
             exception_type=type(exc).__name__
         )
 
+    @app.exception_handler(PncException)
+    async def pnc_exception_handler(request: Request, exc: PncException):
+        log_exception(request, exc, exc.status_code)
         return JSONResponse(
             status_code=exc.status_code,
             content={"message": exc.message, "status_code": exc.status_code}
         )
 
     @app.exception_handler(Exception)
-    async def pnc_exception_handler(request: Request, exc: Exception):
-        # Use request-bound logger if available
-        req_logger = getattr(request.state, "logger", logger)
-
-        req_logger.error(
-            "Request failed",
-            error=exc.message,
-            status_code=exc.status_code,
-            exception_type=type(exc).__name__
-        )
-
+    async def generic_exception_handler(request: Request, exc: Exception):
+        log_exception(request, exc, 500)
         return JSONResponse(
-            status_code=exc.status_code,
-            content={"message": exc.message, "status_code": exc.status_code}
+            status_code=500,
+            content={"message": str(exc), "status_code": 500}
         )
