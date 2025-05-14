@@ -7,14 +7,14 @@ async def get_logger_with_context(request: Request):
     """Set up a contextualized logger for the current request.
 
     This middleware:
-    1. Sets up request context with request ID
+    1. Sets up a request context with request ID
     2. Creates a logger with proper module/function naming
     3. Binds request ID to the logger
 
     Returns:
         CustomLogger: A logger configured for the current request context
     """
-    # Set up request context
+    # Set up a request context
     RequestContext.setup_request_context(request)
     RequestContext.on_request_start(request)
 

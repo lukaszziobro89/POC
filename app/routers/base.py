@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app.dependencies import get_logger_with_context
 from app.service.classification.classify import perform_classification
 from app.service.ocr import azure_ai_vision
-from common.exceptions.pnc_exceptions import PncException
+from common.exceptions.handlers import PncException, ClassificationException, OcrException
 from common.logging.request_context import RequestContext
 
 router = APIRouter(tags=["base"])
@@ -34,7 +34,6 @@ async def create_request(request: Request, logger=Depends(get_logger_with_contex
         RequestContext.on_request_error(request, e)
         raise
     except Exception as e:
-        # Other exceptions still become generic HTTPExceptions
         RequestContext.on_request_error(request, e)
         raise HTTPException(status_code=500, detail="Here i got internal server error !")
     finally:
@@ -61,12 +60,12 @@ async def ocr_endpoint(request: Request, logger=Depends(get_logger_with_context)
         azure_ai_vision.perform_ocr()
         logger.info("OCR DONE!")
         return {"status": "success", "message": "OCR completed"}
-    except Exception as e:
+    except OcrException as e:
         RequestContext.on_request_error(request, e)
-        response_status = 500
-        raise HTTPException(status_code=response_status, detail="Internal server error")
+        raise
     finally:
         RequestContext.on_request_end(request, 500)
+
 
 
 @router.get("/classify/{requestId}")
@@ -75,15 +74,13 @@ async def classify(requestId: str, request: Request, logger=Depends(get_logger_w
         logger.info(f"preparing CLASSIFICATION for request ID: {requestId}")
         perform_classification()
         logger.info(f"CLASSIFICATION DONE for request ID: {requestId}!")
-        response_status = 200
         return {
             "status": "success",
             "message": f"CLASSIFICATION completed for request ID: {requestId}",
         }
-    except Exception as e:
+    except ClassificationException as e:
         RequestContext.on_request_error(request, e)
-        response_status = 500
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise
     finally:
         RequestContext.on_request_end(request, 500)
 

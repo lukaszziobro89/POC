@@ -12,13 +12,13 @@ setup_logging()
 
 # Create FastAPI app
 app = FastAPI(title="MyAPI")
+setup_exception_handlers(app)
 
 # Get a logger for this module
 logger = get_logger(__name__)
 
 # Include routers
 app.include_router(base.router)
-setup_exception_handlers(app)
 
 if __name__ == "__main__":
 

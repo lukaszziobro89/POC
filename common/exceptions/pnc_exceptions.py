@@ -1,41 +1,10 @@
-# common/pnc_exceptions.py
 from fastapi import Request, FastAPI
 from fastapi.responses import JSONResponse
 
+from common.exceptions.handlers import ClassificationException, Error, OcrException, VolumeException, PncException
 from common.logging.custom_logger import get_logger
 
 logger = get_logger(__name__)
-
-
-class PncException(Exception):
-    """Base exception for application-specific errors."""
-
-    def __init__(self, message: str, status_code: int = 500):
-        self.message = message
-        self.status_code = status_code
-        super().__init__(self.message)
-
-
-class OcrException(PncException):
-    """Exception raised for OCR-related errors."""
-
-    def __init__(self, message: str, status_code: int = 422):
-        super().__init__(message, status_code)
-
-
-class ClassificationException(PncException):
-    """Exception raised for classification-related errors."""
-
-    def __init__(self, message: str, status_code: int = 422):
-        super().__init__(message, status_code)
-
-
-class VolumeException(PncException):
-    """Exception raised for volume-related errors."""
-
-    def __init__(self, message: str, status_code: int = 422):
-        super().__init__(message, status_code)
-
 
 def setup_exception_handlers(app: FastAPI):
     """Set up global exception handlers for the application."""
@@ -52,16 +21,33 @@ def setup_exception_handlers(app: FastAPI):
 
     @app.exception_handler(PncException)
     async def pnc_exception_handler(request: Request, exc: PncException):
+        """Handle PncException errors."""
         log_exception(request, exc, exc.status_code)
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"message": exc.message, "status_code": exc.status_code}
-        )
+        return Error(exc.status_code, exc.message).to_response()
+
+    @app.exception_handler(OcrException)
+    async def ocr_exception_handler(request: Request, exc: OcrException):
+        """Handle OcrException errors."""
+        log_exception(request, exc, exc.status_code)
+        return Error(exc.status_code, exc.message).to_response()
+
+    @app.exception_handler(ClassificationException)
+    async def classification_exception_handler(request: Request, exc: ClassificationException):
+        """Handle ClassificationException errors."""
+        log_exception(request, exc, exc.status_code)
+        return Error(exc.status_code, exc.message).to_response()
+
+    @app.exception_handler(VolumeException)
+    async def volume_exception_handler(request: Request, exc: VolumeException):
+        """Handle VolumeException errors."""
+        log_exception(request, exc, exc.status_code)
+        return Error(exc.status_code, exc.message).to_response()
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception):
+        """Handle all unspecified exceptions with a generic error response."""
         log_exception(request, exc, 500)
         return JSONResponse(
-            status_code=500,
-            content={"message": str(exc), "status_code": 500}
+            status_code=getattr(exc, "status_code", 500),
+            content={"message": str(exc)}
         )

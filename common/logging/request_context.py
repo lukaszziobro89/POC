@@ -83,6 +83,7 @@ class RequestContext:
         # from the exception traceback, so we can use the request's logger directly
         request.state.logger.error(
             "Request processing failed",
-            error=str(error),
+            status_code = getattr(error, "status_code", 500),
+            error=getattr(error, "message", str(error)),
             exception_type=type(error).__name__,
         )
