@@ -1,6 +1,6 @@
 from fastapi.responses import JSONResponse
 import pytest
-from common.exceptions.handlers import (
+from common.exceptions.pnc_exceptions import (
     Error,
     PncException,
     OcrException,

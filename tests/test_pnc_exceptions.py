@@ -3,8 +3,8 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
-from common.exceptions.handlers import ClassificationException, OcrException, VolumeException, PncException
-from common.exceptions.pnc_exceptions import setup_exception_handlers
+from common.exceptions.pnc_exceptions import ClassificationException, OcrException, VolumeException, PncException
+from common.exceptions.handlers import setup_exception_handlers
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def client(test_app):
 @pytest.fixture
 def mock_logger():
     """Create a mock logger for testing log calls."""
-    with patch("common.exceptions.pnc_exceptions.logger") as mock:
+    with patch("common.exceptions.handlers.logger") as mock:
         yield mock
 
 
@@ -93,7 +93,7 @@ class TestExceptionHandlers:
         assert response.status_code == 418
         assert response.json() == {"message": "Custom status error"}
 
-    @patch("common.exceptions.pnc_exceptions.logger")
+    @patch("common.exceptions.handlers.logger")
     def test_classification_exceptions_are_properly_logged(self, mock_logger, client):
         """Test that ClassificationException errors are properly logged."""
         client.get("/test-classification-error")
@@ -109,7 +109,7 @@ class TestExceptionHandlers:
             assert call_kwargs.get("status_code") == 422
             assert call_kwargs.get("exception_type") == "ClassificationException"
 
-    @patch("common.exceptions.pnc_exceptions.logger")
+    @patch("common.exceptions.handlers.logger")
     def test_ocr_exceptions_are_properly_logged(self, mock_logger, client):
         """Test that OcrException errors are properly logged."""
         client.get("/test-ocr-error")
@@ -124,7 +124,7 @@ class TestExceptionHandlers:
             assert call_kwargs.get("status_code") == 422
             assert call_kwargs.get("exception_type") == "OcrException"
 
-    @patch("common.exceptions.pnc_exceptions.logger")
+    @patch("common.exceptions.handlers.logger")
     def test_volume_exceptions_are_properly_logged(self, mock_logger, client):
         """Test that VolumeException errors are properly logged."""
         client.get("/test-volume-error")
@@ -139,7 +139,7 @@ class TestExceptionHandlers:
             assert call_kwargs.get("status_code") == 422
             assert call_kwargs.get("exception_type") == "VolumeException"
 
-    @patch("common.exceptions.pnc_exceptions.logger")
+    @patch("common.exceptions.handlers.logger")
     def test_pnc_exceptions_are_properly_logged(self, mock_logger, client):
         """Test that PncException errors are properly logged."""
         client.get("/test-pnc-error")
@@ -154,7 +154,7 @@ class TestExceptionHandlers:
             assert call_kwargs.get("status_code") == 400
             assert call_kwargs.get("exception_type") == "PncException"
 
-    @patch("common.exceptions.pnc_exceptions.logger")
+    @patch("common.exceptions.handlers.logger")
     def test_generic_exceptions_are_properly_logged(self, mock_logger, client):
         """Test that generic exceptions are properly logged."""
         client.get("/test-generic-error")
@@ -174,7 +174,7 @@ class TestExceptionHandlers:
         """Test that request.state.logger is used if present."""
         custom_logger = MagicMock()
 
-        with patch("common.exceptions.pnc_exceptions.logger") as default_logger:
+        with patch("common.exceptions.handlers.logger") as default_logger:
             # Set up middleware to add custom logger to request state
             @test_app.middleware("http")
             async def add_logger_to_request(request: Request, call_next):

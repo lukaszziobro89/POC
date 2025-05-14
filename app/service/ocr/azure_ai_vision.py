@@ -1,7 +1,7 @@
 import random
 from time import sleep
 
-from common.exceptions.handlers import OcrException, PncException
+from common.exceptions.pnc_exceptions import OcrException, PncException
 from common.logging.custom_logger import LogType, get_logger
 from config import MIN_OCR_TIME, MAX_OCR_TIME
 

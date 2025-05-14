@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app.dependencies import get_logger_with_context
 from app.service.classification.classify import perform_classification
 from app.service.ocr import azure_ai_vision
-from common.exceptions.handlers import PncException, ClassificationException, OcrException
+from common.exceptions.pnc_exceptions import PncException, ClassificationException, OcrException
 from common.logging.request_context import RequestContext
 
 router = APIRouter(tags=["base"])

@@ -1,58 +1,53 @@
+from fastapi import Request, FastAPI
 from fastapi.responses import JSONResponse
 
-class Error:
-    """
-    Represents an API error response with standardized formatting.
+from common.exceptions.pnc_exceptions import ClassificationException, Error, OcrException, VolumeException, PncException
+from common.logging.custom_logger import get_logger
 
-    This class encapsulates error details including error code and message,
-    and provides methods to convert the error to different formats.
-    """
+logger = get_logger(__name__)
 
-    def __init__(self, code: int, message: str):
-        if not isinstance(code, int):
-            raise TypeError(f"Status code must be an integer, got {type(code).__name__}")
-        if not 100 <= code <= 599:
-            raise ValueError(f"Invalid HTTP status code: {code}. Code must be between 100 and 599")
-        self.code = code
-        self.message = message
+def setup_exception_handlers(app: FastAPI):
+    """Set up global exception handlers for the application."""
 
-    def to_dict(self):
-        return {"code": self.code, "message": self.message}
+    def log_exception(request: Request, exc: Exception, status_code: int):
+        """Helper function to log exceptions."""
+        req_logger = getattr(request.state, "logger", logger)
+        req_logger.error(
+            "Request failed",
+            error=getattr(exc, "message", str(exc)),
+            status_code=status_code,
+            exception_type=type(exc).__name__
+        )
 
-    def to_response(self):
-        return JSONResponse(status_code=self.code, content=self.to_dict())
+    @app.exception_handler(PncException)
+    async def pnc_exception_handler(request: Request, exc: PncException):
+        """Handle PncException errors."""
+        log_exception(request, exc, exc.status_code)
+        return Error(exc.status_code, exc.message).to_response()
 
-    def __call__(self):
-        return self.to_response()
+    @app.exception_handler(OcrException)
+    async def ocr_exception_handler(request: Request, exc: OcrException):
+        """Handle OcrException errors."""
+        log_exception(request, exc, exc.status_code)
+        return Error(exc.status_code, exc.message).to_response()
 
-class PncException(Exception):
-    """Base exception for application-specific errors."""
+    @app.exception_handler(ClassificationException)
+    async def classification_exception_handler(request: Request, exc: ClassificationException):
+        """Handle ClassificationException errors."""
+        log_exception(request, exc, exc.status_code)
+        return Error(exc.status_code, exc.message).to_response()
 
-    def __init__(self, message: str, status_code: int = 500):
-        if not 100 <= status_code <= 599:
-            raise ValueError(f"Invalid HTTP status code: {status_code}. Code must be between 100 and 599")
-        self.message = message
-        self.status_code = status_code
-        super().__init__(self.message)
+    @app.exception_handler(VolumeException)
+    async def volume_exception_handler(request: Request, exc: VolumeException):
+        """Handle VolumeException errors."""
+        log_exception(request, exc, exc.status_code)
+        return Error(exc.status_code, exc.message).to_response()
 
-
-class OcrException(PncException):
-    """Exception raised for OCR-related errors."""
-
-    def __init__(self, message: str, status_code: int = 422):
-        super().__init__(message, status_code)
-
-
-class ClassificationException(PncException):
-    """Exception raised for classification-related errors."""
-
-    def __init__(self, message: str, status_code: int = 422):
-        super().__init__(message, status_code)
-
-
-class VolumeException(PncException):
-    """Exception raised for volume-related errors."""
-
-    def __init__(self, message: str, status_code: int = 422):
-        super().__init__(message, status_code)
-
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request: Request, exc: Exception):
+        """Handle all unspecified exceptions with a generic error response."""
+        log_exception(request, exc, 500)
+        return JSONResponse(
+            status_code=getattr(exc, "status_code", 500),
+            content={"message": str(exc)}
+        )
