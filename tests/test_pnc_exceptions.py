@@ -3,9 +3,14 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
-from common.exceptions.pnc_exceptions import ClassificationException, OcrException, VolumeException, PncException
+from common.exceptions.pnc_exceptions import (
+    ClassificationException,
+    OcrException,
+    VolumeException,
+    PncException,
+    RequestStoreException
+)
 from common.exceptions.handlers import setup_exception_handlers
-
 
 @pytest.fixture
 def test_app():
@@ -24,6 +29,10 @@ def test_app():
     @app.get("/test-volume-error")
     async def test_volume_error():
         raise VolumeException("Volume test error")
+
+    @app.get("/test-request-store-error")
+    async def test_request_store_error():
+        raise RequestStoreException("Request store test error")
 
     @app.get("/test-pnc-error")
     async def test_pnc_error():
@@ -85,13 +94,13 @@ class TestExceptionHandlers:
         """Test that unhandled exceptions return a generic error response."""
         response = client.get("/test-generic-error")
         assert response.status_code == 500
-        assert response.json() == {"message": "Generic test error"}
+        assert response.json() == {"code": 500, "message": "Generic test error"}
 
     def test_exception_with_status_code_attribute_uses_that_code(self, client):
         """Test that exceptions with a status_code attribute use that code."""
         response = client.get("/test-custom-status-error")
         assert response.status_code == 418
-        assert response.json() == {"message": "Custom status error"}
+        assert response.json() == {"code": 418, "message": "Custom status error"}
 
     @patch("common.exceptions.handlers.logger")
     def test_classification_exceptions_are_properly_logged(self, mock_logger, client):
@@ -138,6 +147,27 @@ class TestExceptionHandlers:
             assert call_kwargs.get("error") == "Volume test error"
             assert call_kwargs.get("status_code") == 422
             assert call_kwargs.get("exception_type") == "VolumeException"
+
+    def test_request_store_exception_returns_expected_response(self, client):
+        """Test that RequestStoreException returns the expected response."""
+        response = client.get("/test-request-store-error")
+        assert response.status_code == 422
+        assert response.json() == {"code": 422, "message": "Request store test error"}
+
+    @patch("common.exceptions.handlers.logger")
+    def test_request_store_exceptions_are_properly_logged(self, mock_logger, client):
+        """Test that RequestStoreException errors are properly logged."""
+        client.get("/test-request-store-error")
+        mock_logger.error.assert_called()
+        calls = mock_logger.error.call_args_list
+        if calls:
+            call_args = calls[-1][0]
+            call_kwargs = calls[-1][1]
+
+            assert "Request failed" in call_args[0]
+            assert call_kwargs.get("error") == "Request store test error"
+            assert call_kwargs.get("status_code") == 422
+            assert call_kwargs.get("exception_type") == "RequestStoreException"
 
     @patch("common.exceptions.handlers.logger")
     def test_pnc_exceptions_are_properly_logged(self, mock_logger, client):
@@ -187,3 +217,60 @@ class TestExceptionHandlers:
             # Verify the custom logger was used instead of the default
             custom_logger.error.assert_called()
             default_logger.error.assert_not_called()
+
+class TestRequestStoreException:
+    def test_will_initialize_with_default_status_code(self):
+        """Test that RequestStoreException initializes with the default status code."""
+        exc = RequestStoreException("Request store failed")
+        assert exc.message == "Request store failed"
+        assert exc.status_code == 422
+        assert isinstance(exc, PncException)
+
+    def test_will_accept_custom_status_code(self):
+        """Test that RequestStoreException accepts custom status code."""
+        exc = RequestStoreException("Request store error", 400)
+        assert exc.message == "Request store error"
+        assert exc.status_code == 400
+
+    def test_can_raise_request_store_exception(self):
+        """Test that RequestStoreException can be raised and caught."""
+        with pytest.raises(RequestStoreException) as excinfo:
+            raise RequestStoreException("Test error")
+        assert str(excinfo.value) == "Test error"
+        assert excinfo.value.status_code == 422
+
+    def test_function_raising_request_store_exception(self):
+        """Test that a function raising RequestStoreException can be caught."""
+        def func_that_raises():
+            raise RequestStoreException("Function error")
+
+        with pytest.raises(RequestStoreException) as excinfo:
+            func_that_raises()
+        assert "Function error" in str(excinfo.value)
+
+    def test_request_store_exception_with_custom_attributes(self):
+        """Test that RequestStoreException can be raised with custom attributes."""
+        with pytest.raises(RequestStoreException) as excinfo:
+            exc = RequestStoreException("Custom attributes", 400)
+            exc.additional_info = "Extra details"
+            raise exc
+
+        assert excinfo.value.status_code == 400
+        assert hasattr(excinfo.value, "additional_info")
+        assert excinfo.value.additional_info == "Extra details"
+
+    def test_will_raise_error_with_invalid_status_code(self):
+        """Test that RequestStoreException raises ValueError when initialized with invalid status code."""
+        with pytest.raises(ValueError) as excinfo:
+            RequestStoreException("Invalid code error", 55)
+        assert "Invalid HTTP status code: 55. Code must be between 100 and 599" == str(excinfo.value)
+
+    def test_will_fail_initialization_with_less_then_100_code(self):
+        with pytest.raises(ValueError) as excinfo:
+            RequestStoreException("Negative code", 66)
+        assert "Invalid HTTP status code: 66. Code must be between 100 and 599" == str(excinfo.value)
+
+    def test_will_fail_initialization_with_above_then_599_code(self):
+        with pytest.raises(ValueError) as excinfo:
+            RequestStoreException("Negative code", 666)
+        assert "Invalid HTTP status code: 666. Code must be between 100 and 599" == str(excinfo.value)

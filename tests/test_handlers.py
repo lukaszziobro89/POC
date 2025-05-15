@@ -5,9 +5,10 @@ from common.exceptions.pnc_exceptions import (
     PncException,
     OcrException,
     ClassificationException,
-    VolumeException
+    VolumeException,
+    RequestStoreException
 )
-
+Ń
 
 class TestErrorClass:
     def test_will_initialize_with_correct_values(self):
@@ -307,4 +308,61 @@ class TestVolumeException:
     def test_will_fail_initialization_with_above_then_599_code(self):
         with pytest.raises(ValueError) as excinfo:
             VolumeException("Negative code", 666)
+        assert "Invalid HTTP status code: 666. Code must be between 100 and 599" == str(excinfo.value)
+
+class TestRequestStoreException:
+    def test_will_initialize_with_default_status_code(self):
+        """Test that RequestStoreException initializes with the default status code."""
+        exc = RequestStoreException("Request store failed")
+        assert exc.message == "Request store failed"
+        assert exc.status_code == 422
+        assert isinstance(exc, PncException)
+
+    def test_will_accept_custom_status_code(self):
+        """Test that RequestStoreException accepts custom status code."""
+        exc = RequestStoreException("Request store error", 400)
+        assert exc.message == "Request store error"
+        assert exc.status_code == 400
+
+    def test_can_raise_request_store_exception(self):
+        """Test that RequestStoreException can be raised and caught."""
+        with pytest.raises(RequestStoreException) as excinfo:
+            raise RequestStoreException("Test error")
+        assert str(excinfo.value) == "Test error"
+        assert excinfo.value.status_code == 422
+
+    def test_function_raising_request_store_exception(self):
+        """Test that a function raising RequestStoreException can be caught."""
+        def func_that_raises():
+            raise RequestStoreException("Function error")
+
+        with pytest.raises(RequestStoreException) as excinfo:
+            func_that_raises()
+        assert "Function error" in str(excinfo.value)
+
+    def test_request_store_exception_with_custom_attributes(self):
+        """Test that RequestStoreException can be raised with custom attributes."""
+        with pytest.raises(RequestStoreException) as excinfo:
+            exc = RequestStoreException("Custom attributes", 400)
+            exc.additional_info = "Extra details"
+            raise exc
+
+        assert excinfo.value.status_code == 400
+        assert hasattr(excinfo.value, "additional_info")
+        assert excinfo.value.additional_info == "Extra details"
+
+    def test_will_raise_error_with_invalid_status_code(self):
+        """Test that RequestStoreException raises ValueError when initialized with invalid status code."""
+        with pytest.raises(ValueError) as excinfo:
+            RequestStoreException("Invalid code error", 55)
+        assert "Invalid HTTP status code: 55. Code must be between 100 and 599" == str(excinfo.value)
+
+    def test_will_fail_initialization_with_less_then_100_code(self):
+        with pytest.raises(ValueError) as excinfo:
+            RequestStoreException("Negative code", 66)
+        assert "Invalid HTTP status code: 66. Code must be between 100 and 599" == str(excinfo.value)
+
+    def test_will_fail_initialization_with_above_then_599_code(self):
+        with pytest.raises(ValueError) as excinfo:
+            RequestStoreException("Negative code", 666)
         assert "Invalid HTTP status code: 666. Code must be between 100 and 599" == str(excinfo.value)

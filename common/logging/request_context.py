@@ -29,7 +29,7 @@ class RequestContext:
         path = request.url.path
 
         # Initialize request timing
-        request.state.start_time = time.time()
+        # request.state.start_time = time.time()
 
         # Skip request ID handling for specific endpoints
         if path in RequestContext.NON_REQUEST_ID_ENDPOINTS:
@@ -69,21 +69,19 @@ class RequestContext:
     @staticmethod
     def on_request_start(request: Request) -> None:
         """Actions to perform at the start of a request."""
-        pass  # Add implementation if needed
+        request.state.start_time = time.time()
 
     @staticmethod
     def on_request_end(request: Request, status_code: int) -> None:
         """Actions to perform at the end of a request."""
-        pass  # Add implementation if needed
+        end_time = time.time()
+        request.state.end_time = end_time
+        if hasattr(request.state, "start_time") and hasattr(request.state, "logger"):
+            duration_ms = round((end_time - request.state.start_time) * 1000, 2)
 
-    @staticmethod
-    def on_request_error(request: Request, error: Exception) -> None:
-        """Log request error details."""
-        # The CustomLogger will automatically extract the correct module and function
-        # from the exception traceback, so we can use the request's logger directly
-        request.state.logger.error(
-            "Request processing failed",
-            status_code = getattr(error, "status_code", 500),
-            error=getattr(error, "message", str(error)),
-            exception_type=type(error).__name__,
-        )
+            request.state.logger.info(
+                "Request completed succesfully!",
+                status_code=status_code,
+                duration_ms=duration_ms,
+                path=request.url.path
+            )

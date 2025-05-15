@@ -15,7 +15,6 @@ async def root(request: Request, logger=Depends(get_logger_with_context)):
         logger.info("Root endpoint accessed")
         return {"message": "Hello World"}
     except Exception as e:
-        RequestContext.on_request_error(request, e)
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         RequestContext.on_request_end(request, 200)
@@ -28,14 +27,13 @@ async def create_request(request: Request, logger=Depends(get_logger_with_contex
         request_id = request.state.request_id
         logger.info(f"Request created with ID: {request_id}")
         logger.error(f"Request creation failed!")
-        raise ValueError('Some exception occurred')
+        raise Exception('Some exception occurred')
+        # raise ValueError('Some exception occurred')
         # raise PncException(status_code=500, message='Some exception occurred')
-    except PncException as e:
-        RequestContext.on_request_error(request, e)
-        raise
-    except Exception as e:
-        RequestContext.on_request_error(request, e)
-        raise HTTPException(status_code=500, detail="Here i got internal server error !")
+    # except PncException as e:
+    #     raise
+    # except Exception as e:
+    #     raise HTTPException(status_code=500, detail="Here i got internal server error !")
     finally:
         RequestContext.on_request_end(request, 200)
 
@@ -47,7 +45,6 @@ async def create_request(request: Request, logger=Depends(get_logger_with_contex
         logger.info(f"Request created with ID: {request_id}")
         return {"request_id": request_id, "status": "created"}
     except Exception as e:
-        RequestContext.on_request_error(request, e)
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         RequestContext.on_request_end(request, 200)
@@ -61,7 +58,6 @@ async def ocr_endpoint(request: Request, logger=Depends(get_logger_with_context)
         logger.info("OCR DONE!")
         return {"status": "success", "message": "OCR completed"}
     except OcrException as e:
-        RequestContext.on_request_error(request, e)
         raise
     finally:
         RequestContext.on_request_end(request, 500)
@@ -79,7 +75,6 @@ async def classify(requestId: str, request: Request, logger=Depends(get_logger_w
             "message": f"CLASSIFICATION completed for request ID: {requestId}",
         }
     except ClassificationException as e:
-        RequestContext.on_request_error(request, e)
         raise
     finally:
         RequestContext.on_request_end(request, 500)
