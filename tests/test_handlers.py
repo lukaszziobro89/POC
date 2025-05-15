@@ -8,7 +8,6 @@ from common.exceptions.pnc_exceptions import (
     VolumeException,
     RequestStoreException
 )
-Ń
 
 class TestErrorClass:
     def test_will_initialize_with_correct_values(self):
