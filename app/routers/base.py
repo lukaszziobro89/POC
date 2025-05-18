@@ -43,9 +43,10 @@ async def create_request(request: Request, logger=Depends(get_logger_with_contex
         logger.info("Creating new request")
         request_id = request.state.request_id
         logger.info(f"Request created with ID: {request_id}")
+        raise ClassificationException('Some exception occurred')
         return {"request_id": request_id, "status": "created"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    # except ClassificationException as e:
+    #     raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         RequestContext.on_request_end(request, 200)
 
@@ -63,7 +64,6 @@ async def ocr_endpoint(request: Request, logger=Depends(get_logger_with_context)
         RequestContext.on_request_end(request, 500)
 
 
-
 @router.get("/classify/{requestId}")
 async def classify(requestId: str, request: Request, logger=Depends(get_logger_with_context)):
     try:
@@ -79,6 +79,41 @@ async def classify(requestId: str, request: Request, logger=Depends(get_logger_w
     finally:
         RequestContext.on_request_end(request, 500)
 
+
+from pydantic import BaseModel, Field, validator
+from typing import Dict, Any, Optional
+from common.exceptions.pnc_exceptions import PncException, RequestStoreException
+
+
+class ExtractionData(BaseModel):
+    document_type: str = Field(..., description="Type of document to extract")
+    content_areas: list[str] = Field(..., description="Areas to extract content from")
+    options: Optional[Dict[str, Any]] = Field(default={}, description="Additional extraction options")
+
+
+@router.post("/extraction/{requestId}")
+async def extract_content(
+        requestId: str,
+        request: Request,
+        extraction_data: ExtractionData,
+        logger=Depends(get_logger_with_context)
+):
+    try:
+        logger.info(f"Starting extraction for request ID: {requestId}")
+        # Perform extraction logic here using validated extraction_data
+        logger.info(extraction_data)
+
+        logger.info(f"Extraction completed for request ID: {requestId}")
+        return {
+            "status": "success",
+            "request_id": requestId,
+            "message": "Extraction completed successfully"
+        }
+    except Exception as e:
+        # Only handle business logic errors here, not validation errors
+        raise PncException(message=f"Extraction failed: {str(e)}", status_code=422)
+    finally:
+        RequestContext.on_request_end(request, 200)
 
 @router.get("/token")
 async def token(request: Request, logger=Depends(get_logger_with_context)):

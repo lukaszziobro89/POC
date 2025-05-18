@@ -1,8 +1,7 @@
 import random
 from time import sleep
 
-from common.exceptions.pnc_exceptions import PncException
-from common.exceptions.handlers import ClassificationException
+from common.exceptions.pnc_exceptions import ClassificationException
 from common.logging.custom_logger import LogType, get_logger
 
 from config import MIN_CLASSIFICATION_TIME, MAX_CLASSIFICATION_TIME

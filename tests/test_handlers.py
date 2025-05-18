@@ -1,5 +1,9 @@
 from fastapi.responses import JSONResponse
 import pytest
+from fastapi import Request
+from fastapi.exceptions import RequestValidationError
+from common.exceptions.handlers import setup_exception_handlers
+from unittest.mock import MagicMock, patch
 from common.exceptions.pnc_exceptions import (
     Error,
     PncException,
@@ -8,6 +12,8 @@ from common.exceptions.pnc_exceptions import (
     VolumeException,
     RequestStoreException
 )
+from common.logging.custom_logger import get_logger
+
 
 class TestErrorClass:
     def test_will_initialize_with_correct_values(self):
@@ -365,3 +371,142 @@ class TestRequestStoreException:
         with pytest.raises(ValueError) as excinfo:
             RequestStoreException("Negative code", 666)
         assert "Invalid HTTP status code: 666. Code must be between 100 and 599" == str(excinfo.value)
+
+
+class TestValidationExceptionHandler:
+    @pytest.fixture
+    def mock_request(self):
+        """Create a mock request for testing."""
+        request = MagicMock(spec=Request)
+        request.state = MagicMock()
+        request.state.logger = get_logger("test")
+        return request
+
+    @pytest.fixture
+    def validation_exception_handler(self):
+        """Extract the validation_exception_handler from a setup_exception_handlers function."""
+        mock_app = MagicMock()
+        handlers = {}
+
+        def mock_exception_handler(exc_class):
+            def decorator(func):
+                handlers[exc_class] = func
+                return func
+            return decorator
+
+        mock_app.exception_handler = mock_exception_handler
+        setup_exception_handlers(mock_app)
+        return handlers[RequestValidationError]
+
+    async def test_will_handle_basic_validation_errors(self, mock_request, validation_exception_handler):
+        """Test basic handling of RequestValidationError."""
+        validation_error = RequestValidationError(
+            errors=[
+                {
+                    "loc": ("body", "name"),
+                    "msg": "Field required",
+                    "type": "missing"
+                },
+                {
+                    "loc": ("body", "age"),
+                    "msg": "Value is not a valid integer",
+                    "type": "type_error"
+                }
+            ]
+        )
+
+        response = await validation_exception_handler(mock_request, validation_error)
+
+        assert response.status_code == 400
+        assert response.media_type == "application/json"
+
+        content = response.body.decode()
+        assert "Bad request" in content
+        assert "body.name: Field required" in content
+        assert "body.age: Value is not a valid integer" in content
+
+    async def test_will_handle_empty_errors_list(self, mock_request, validation_exception_handler):
+        """Test handling of RequestValidationError with empty errors list."""
+        empty_error = RequestValidationError(errors=[])
+        response = await validation_exception_handler(mock_request, empty_error)
+
+        assert response.status_code == 400
+        assert response.media_type == "application/json"
+        assert "Bad request" in response.body.decode()
+
+    async def test_will_handle_unusual_error_structures(self, mock_request, validation_exception_handler):
+        """Test handling of RequestValidationError with unusual but valid error structures."""
+        unusual_error = RequestValidationError(
+            errors=[
+                {
+                    "loc": (),
+                    "msg": "General error",
+                    "type": "general_error"
+                },
+                {
+                    "loc": ("body", "field"),
+                    "msg": "",
+                    "type": "value_error"
+                }
+            ]
+        )
+        response = await validation_exception_handler(mock_request, unusual_error)
+
+        assert response.status_code == 400
+        assert response.media_type == "application/json"
+
+        response_body = response.body.decode()
+        assert "Bad request" in response_body
+        assert ": General error" in response_body
+        assert "body.field: " in response_body
+
+    async def test_will_format_nested_locations(self, mock_request, validation_exception_handler):
+        """Test handling of deeply nested error locations."""
+        nested_error = RequestValidationError(
+            errors=[
+                {
+                    "loc": ("body", "items", 0, "details", "attributes", "name"),
+                    "msg": "Field required",
+                    "type": "missing"
+                }
+            ]
+        )
+        response = await validation_exception_handler(mock_request, nested_error)
+
+        response_body = response.body.decode()
+        assert "body.items.0.details.attributes.name: Field required" in response_body
+
+    async def test_will_handle_special_characters(self, mock_request, validation_exception_handler):
+        """Test handling of errors with special characters in messages."""
+        special_chars_error = RequestValidationError(
+            errors=[
+                {
+                    "loc": ("body", "text"),
+                    "msg": "Special characters: àáâãäåæçèéêëìíîï",
+                    "type": "value_error"
+                }
+            ]
+        )
+        response = await validation_exception_handler(mock_request, special_chars_error)
+
+        response_body = response.body.decode()
+        assert "Special characters: àáâãäåæçèéêëìíîï" in response_body
+
+    async def test_will_handle_large_error_list(self, mock_request, validation_exception_handler):
+        """Test handling of a large number of validation errors."""
+        errors = []
+        for i in range(100):
+            errors.append({
+                "loc": ("body", f"field_{i}"),
+                "msg": f"Error in field {i}",
+                "type": "value_error"
+            })
+
+        large_error = RequestValidationError(errors=errors)
+        response = await validation_exception_handler(mock_request, large_error)
+
+        assert response.status_code == 400
+
+        response_body = response.body.decode()
+        assert "field_0" in response_body
+        assert "field_99" in response_body

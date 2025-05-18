@@ -1,8 +1,7 @@
 from fastapi import Request, FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
-from common.exceptions.pnc_exceptions import ClassificationException, Error, OcrException, VolumeException, \
-    PncException, RequestStoreException
+from common.exceptions.pnc_exceptions import Error, PncException
 from common.logging.custom_logger import get_logger
 
 logger = get_logger(__name__)
@@ -26,32 +25,24 @@ def setup_exception_handlers(app: FastAPI):
         log_exception(request, exc, exc.status_code)
         return Error(exc.status_code, exc.message).to_response()
 
-    @app.exception_handler(OcrException)
-    async def ocr_exception_handler(request: Request, exc: OcrException):
-        """Handle OcrException errors."""
-        log_exception(request, exc, exc.status_code)
-        return Error(exc.status_code, exc.message).to_response()
 
-    @app.exception_handler(ClassificationException)
-    async def classification_exception_handler(request: Request, exc: ClassificationException):
-        """Handle ClassificationException errors."""
-        log_exception(request, exc, exc.status_code)
-        return Error(exc.status_code, exc.message).to_response()
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        """Convert FastAPI/Pydantic validation errors to PncException."""
 
-    @app.exception_handler(VolumeException)
-    async def volume_exception_handler(request: Request, exc: VolumeException):
-        """Handle VolumeException errors."""
-        log_exception(request, exc, exc.status_code)
-        return Error(exc.status_code, exc.message).to_response()
+        error_details = []
+        for error in exc.errors():
+            location = ".".join(str(loc) for loc in error["loc"])
+            message = error["msg"]
+            error_details.append(f"{location}: {message}")
 
-    @app.exception_handler(RequestStoreException)
-    async def request_store_exception_handler(request: Request, exc: RequestStoreException):
-        """Handle RequestStoreException errors."""
-        log_exception(request, exc, exc.status_code)
-        return Error(exc.status_code, exc.message).to_response()
+        error_message = f"Bad request: {'; '.join(error_details)}"
+        log_exception(request, exc, 400)
+        return Error(400, error_message).to_response()
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception):
         """Handle all unspecified exceptions with a generic error response."""
         log_exception(request, exc, 500)
         return Error(getattr(exc, "status_code", 500), str(exc)).to_response()
+

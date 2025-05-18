@@ -80,7 +80,7 @@ class RequestContext:
             duration_ms = round((end_time - request.state.start_time) * 1000, 2)
 
             request.state.logger.info(
-                "Request completed succesfully!",
+                "Request completed successfully!",
                 status_code=status_code,
                 duration_ms=duration_ms,
                 path=request.url.path
