@@ -1,12 +1,10 @@
 from fastapi import Request, FastAPI
 from fastapi.exceptions import RequestValidationError
-
+from fastapi import Depends
+from app.dependencies import get_logger_with_context
 from common.exceptions.pnc_exceptions import Error, PncException
-from common.logging.custom_logger import get_logger
 
-logger = get_logger(__name__)
-
-def setup_exception_handlers(app: FastAPI):
+def setup_exception_handlers(app: FastAPI, logger=Depends(get_logger_with_context)):
     """Set up global exception handlers for the application."""
 
     def log_exception(request: Request, exc: Exception, status_code: int):
