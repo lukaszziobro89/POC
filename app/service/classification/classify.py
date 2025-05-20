@@ -11,7 +11,8 @@ def perform_classification() -> None:
     logger.info(log_type=LogType.AUDIT, message=">>> ATTEMPTING TO PERFORM CLASSIFICATION <<<")
     logger.info("Performing classification...")
     # raise PncException('Classification failed', status_code=422)
-    raise ClassificationException('Classification failed', status_code=422)
+    if random.randint(1,10) > MIN_CLASSIFICATION_TIME:
+        raise ClassificationException('Classification failed', status_code=422)
     random_classification_time = random.randint(MIN_CLASSIFICATION_TIME, MAX_CLASSIFICATION_TIME)
     logger.info(f"random_classification_time={random_classification_time}")
     sleep(random_classification_time)
