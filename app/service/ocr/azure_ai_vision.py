@@ -8,9 +8,13 @@ from config import MIN_OCR_TIME, MAX_OCR_TIME
 
 def perform_ocr() -> None:
     logger = get_logger(__name__)
+    logger.info("----------- ATTEMPTING TO PERFORM OCR -----------")
+    raise OcrException('OCR failed', status_code=424)
+    random_number = random.randint(1,10)
+    logger.info(f"----------- RANDOM_NUMBER = {random_number} -----------")
     logger.error(">>> LOGGER ERROR<<<")
-    if random.randint(1,10) > MAX_OCR_TIME:
-        raise OcrException('OCR failed', status_code=424)
+    # if random_number > MIN_OCR_TIME:
+    #     raise OcrException('OCR failed', status_code=424)
     # raise OcrException('OCR failed', status_code=422)
     logger.info(log_type=LogType.AUDIT, message=">>> ATTEMPTING TO PERFORM OCR <<<")
     logger.info("Performing OCR...")

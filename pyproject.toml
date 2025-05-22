@@ -8,6 +8,7 @@ dependencies = [
     "httpx>=0.28.1",
     "idna==3.10",
     "locust>=2.37.4",
+    "pytest-asyncio>=0.26.0",
     "requests>=2.32.3",
     "starlette>=0.46.2",
     "structlog>=25.2.0",

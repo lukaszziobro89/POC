@@ -4,6 +4,7 @@ from app.dependencies import get_logger_with_context
 from app.service.classification.classify import perform_classification
 from app.service.ocr import azure_ai_vision
 from common.exceptions.pnc_exceptions import PncException, ClassificationException, OcrException
+from common.helpers.retry_service import retry
 from common.logging.request_context import RequestContext
 
 router = APIRouter(tags=["base"])
@@ -51,6 +52,13 @@ async def create_request(request: Request, logger=Depends(get_logger_with_contex
         RequestContext.on_request_end(request, 200)
 
 @router.get("/ocr")
+@retry(
+    max_tries=5,
+    delay_seconds=0.5,
+    backoff_factor=3.0,
+    exceptions_to_check=OcrException,
+    logger_provider=Depends(get_logger_with_context)
+)
 async def ocr_endpoint(request: Request, logger=Depends(get_logger_with_context)):
 
     try:
@@ -58,8 +66,8 @@ async def ocr_endpoint(request: Request, logger=Depends(get_logger_with_context)
         azure_ai_vision.perform_ocr()
         logger.info("OCR DONE!")
         return {"status": "success", "message": "OCR completed"}
-    except OcrException as e:
-        raise
+    # except OcrException as e:
+    #     raise
     finally:
         RequestContext.on_request_end(request, 500)
 
