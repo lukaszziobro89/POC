@@ -17,7 +17,7 @@ class AnotherRetryTestException(Exception):
 
 @pytest.mark.asyncio  # All tests need to be async because _retry_function is async
 async def test_sync_function_succeeds_first_try():
-    """Test that a sync function that succeeds on first try works normally."""
+    """Test that a sync function that succeeds on a first try works normally."""
     mock_func = MagicMock(return_value="success")
 
     @retry()
